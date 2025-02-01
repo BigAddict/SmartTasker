@@ -1,166 +1,131 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
-from sqlalchemy import (
-    Column, Integer, String, Boolean, ForeignKey, DateTime, 
-    JSON, Float, Interval, Date, Index, select
-)
-from datetime import datetime, timedelta
-from sqlalchemy import TypeDecorator
-import asyncio
-import json
+# Standard library imports
+from datetime import date, datetime, timedelta
+from typing import Optional, Dict, List
 
-# Use the same Base for declarative models
-Base = declarative_base()
+# Third-party imports
+from sqlmodel import Field, SQLModel, Relationship
+from sqlalchemy import JSON, Column
+from pydantic import model_validator
 
-# Custom JSON Encoder and Type Decorator
-class CustomJSONEncoder(json.JSONEncoder):
-    """
-    Custom JSON encoder to handle datetime and timedelta objects.
-    """
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()  # Convert datetime to ISO format string
-        if isinstance(obj, timedelta):
-            return str(obj)  # Convert timedelta to string
-        return super().default(obj)
-
-class CustomJSON(TypeDecorator):
-    """
-    Custom JSON type decorator to use the custom JSON encoder.
-    """
-    impl = JSON
-
-    def process_bind_param(self, value, dialect):
-        if value is not None:
-            return json.dumps(value, cls=CustomJSONEncoder)
-        return value
-
-    def process_result_value(self, value, dialect):
-        if value is not None:
-            return json.loads(value)
-        return value
-
-class Task(Base):
-    __tablename__ = "tasks"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    title = Column(String, nullable=False)
-    description = Column(String, default="")
-    priority = Column(Integer, default=2)  # 1-4 (Eisenhower Matrix)
-    status = Column(String, default='pending')  # pending, in_progress, completed
-    due_date = Column(Date)  # Final deadline
-    start_time = Column(DateTime)  # When to start working on it
-    duration = Column(Interval)  # Estimated time required
-    is_time_fixed = Column(Boolean, default=False)  # Must happen at exact time
-    recurrence = Column(String)  # Daily/weekly/monthly patterns
-    ai_generated = Column(Boolean, default=False)  # AI-created task
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    parent_id = Column(Integer, ForeignKey('tasks.id'))
-    
-    # Relationships
-    children = relationship("Task", back_populates="parent", remote_side=[id])
-    parent = relationship("Task", back_populates="children", remote_side=[parent_id])
-    history = relationship("TaskHistory", back_populates="task", cascade="all, delete")
-    time_blocks = relationship("TimeBlock", back_populates="task")
-    ai_suggestions = relationship("AISuggestion", back_populates="task")
-    
-    __table_args__ = (
-        Index('ix_task_due_date', 'due_date'),
-        Index('ix_task_start_time', 'start_time'),
+class Goal(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(..., min_length=1)
+    description: str
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    status: Optional[str] = Field(
+        default=None,
+        description="Status of the goal (Not Started, In Progress, Completed, etc.)"
     )
+    created_at: Optional[datetime] = Field(default_factory=datetime.now)
+    tasks: List["Task"] = Relationship(back_populates="goal")
 
-class TimeBlock(Base):
-    """Actual time spent on tasks"""
-    __tablename__ = "time_blocks"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
-    start = Column(DateTime, nullable=False)
-    end = Column(DateTime)
-    actual_duration = Column(Interval)
-    productivity_score = Column(Float)  # 0-1 scale
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._validate()
     
-    task = relationship("Task", back_populates="time_blocks")
+    def _validate(self):
+        """Validate goal data."""
+        if not self.name or len(self.name.strip()) == 0:
+            raise ValueError("Goal name cannot be empty")
+            
+        valid_statuses = {"Not Started", "In Progress", "Completed", None}
+        if self.status not in valid_statuses:
+            raise ValueError(f"Invalid status. Must be one of: {valid_statuses}")
+            
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValueError("Start date cannot be after end date")
 
-class AISuggestion(Base):
-    __tablename__ = "ai_suggestions"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    task_id = Column(Integer, ForeignKey("tasks.id"))
-    suggestion_type = Column(String)  # schedule, priority, dependency
-    content = Column(JSON, nullable=False)
-    confidence = Column(Float)
-    implemented = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    task = relationship("Task", back_populates="ai_suggestions")
 
-class Memory(Base):
-    __tablename__ = "memories"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    memory_type = Column(String)  # schedule_change, user_preference, etc.
-    content = Column(JSON, nullable=False)
-    relevance_score = Column(Float)
-    last_accessed = Column(DateTime)
-    created_at = Column(DateTime, default=datetime.utcnow)
+class Task(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    goal_id: Optional[int] = Field(default=None, foreign_key="goal.id")
+    goal: Optional[Goal] = Relationship(back_populates="tasks")
+    name: Optional[str] = Field(default=None)
+    description: Optional[str] = Field(default=None)
+    priority: Optional[int] = Field(default=None)
+    status: Optional[str] = Field(default=None)
+    due_date: Optional[datetime] = Field(default=None)
+    suggested_start_time: Optional[datetime] = Field(default=None)
+    start_time: Optional[datetime] = Field(default=None)
+    duration_seconds: Optional[int] = Field(default=None)
+    is_time_fixed: Optional[bool] = Field(default=None)
+    reccurence: Optional[str] = Field(default=None)
+    ai_generated: Optional[bool] = Field(default=None)
+    created_at: Optional[datetime] = Field(default=None)
+    updated_at: Optional[datetime] = Field(default=None)
+    time_block: Optional["TimeBlock"] = Relationship(back_populates="task")
+    ai_suggestion: Optional["AISuggestion"] = Relationship(back_populates="task")
+    task_notification: Optional["TaskNotification"] = Relationship(back_populates="task")
+    task_history: List["TaskHistory"] = Relationship(back_populates="task")
 
-class ClarificationRequest(Base):
-    __tablename__ = "clarification_requests"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    task_id = Column(Integer, ForeignKey("tasks.id"))
-    question = Column(String, nullable=False)
-    context = Column(JSON)  # Related task/data snapshot
-    status = Column(String, default='pending')  # pending, resolved
-    created_at = Column(DateTime, default=datetime.utcnow)
-    resolved_at = Column(DateTime)
+    @property
+    def duration(self):
+        if self.duration_seconds is not None:
+            return timedelta(seconds=self.duration_seconds)
+        return None
 
-    task = relationship("Task")
+    @duration.setter
+    def duration(self, value: Optional[timedelta]):
+        self.duration_seconds = value.total_seconds() if value else None
 
-class TaskHistory(Base):
-    __tablename__ = "task_history"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
-    change_type = Column(String, nullable=False)  # status_change, reschedule, etc.
-    previous_state = Column(CustomJSON)  # Use custom JSON type
-    new_state = Column(CustomJSON)  # Use custom JSON type
-    timestamp = Column(DateTime, default=datetime.utcnow)
 
-    task = relationship("Task", back_populates="history")
+class TimeBlock(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    task_id: int = Field(foreign_key="task.id")
+    task: Task = Relationship(back_populates="time_block")
+    start: Optional[datetime] = Field(default=None)
+    end: Optional[datetime] = Field(default=None)
+    actual_duration_seconds: Optional[int] = Field(default=None)
+    productive_score: Optional[float] = Field(default=None)
 
-class Database:
-    def __init__(self, db_url="sqlite+aiosqlite:///data.sqlite"):
-        # Use create_async_engine for asynchronous database operations
-        self.engine = create_async_engine(db_url, echo=False)
-        # Use async_sessionmaker for creating async sessions
-        self.Session = sessionmaker(
-            bind=self.engine, class_=AsyncSession, expire_on_commit=False
-        )
+    @property
+    def actual_duration(self):
+        if self.actual_duration_seconds is not None:
+            return timedelta(seconds=self.actual_duration_seconds)
+        return None
 
-    async def _create_tables(self):
-        # Use async connection to create tables
-        async with self.engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+    @actual_duration.setter
+    def actual_duration(self, value: Optional[timedelta]):
+        self.actual_duration_seconds = value.total_seconds() if value else None
 
-    def get_session(self):
-        # Return the sessionmaker object
-        return self.Session()
 
-# Example Use case
-if __name__ == "__main__":
-    import asyncio
+class TaskHistory(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    task_id: Optional[int] = Field(default=None, foreign_key="task.id")
+    task: Optional[Task] = Relationship(back_populates="task_history")
+    change_type: str = Field()
+    previous_state: Optional[str] = Field(default=None, sa_column=Column(JSON))
+    new_state: Optional[str] = Field(default=None, sa_column=Column(JSON))
+    timestamp: datetime = Field()
 
-    async def main():
-        db = Database()  # Tables are automatically created during initialization
-        await db._create_tables()
 
-        # Use the sessionmaker to create a session
-        async with db.get_session() as session:
-            # Example: Add a new task
-            new_task = Task(title="Learn Async SQLAlchemy", description="Study async database operations")
-            session.add(new_task)
-            await session.commit()
+class AISuggestion(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    task_id: Optional[int] = Field(default=None, foreign_key="task.id")
+    task: Optional[Task] = Relationship(back_populates="ai_suggestion")
+    name: str = Field()
+    content: str = Field()
+    confidence: Optional[int] = Field(default=None)
+    implemented: Optional[bool] = Field(default=None)
+    created_at: Optional[datetime] = Field(default=None)
+    feedback: Optional["Feedback"] = Relationship(back_populates="ai_suggestion")
 
-            # Example: Query tasks
-            result = await session.execute(select(Task).where(Task.title == "Learn Async SQLAlchemy"))
-            task = result.scalars().first()
-            print(f"Task found: {task.title}")
 
-    asyncio.run(main())
+class TaskNotification(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    task_id: int = Field(foreign_key="task.id")
+    task: Task = Relationship(back_populates="task_notification")
+    name: str = Field()
+    message: str = Field()
+    sent_at: Optional[datetime] = Field(default=None)
+    read_at: Optional[datetime] = Field(default=None)
+
+
+class Feedback(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ai_suggestion_id: int = Field(foreign_key="aisuggestion.id")
+    ai_suggestion: AISuggestion = Relationship(back_populates="feedback")
+    feedback_type: Optional[bool] = Field(default=None)
+    comment: Optional[str] = Field(default=None)
+    created_at: Optional[datetime] = Field(default=None)
