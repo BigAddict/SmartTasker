@@ -41,23 +41,36 @@ class Task(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     goal_id: Optional[int] = Field(default=None, foreign_key="goal.id")
     goal: Optional[Goal] = Relationship(back_populates="tasks")
-    name: Optional[str] = Field(default=None)
-    description: Optional[str] = Field(default=None)
-    priority: Optional[int] = Field(default=None)
-    status: Optional[str] = Field(default=None)
+    name: str
+    description: str
+    priority: Optional[int] = Field(default=3)
+    status: Optional[str] = Field(default="In Progress")
     due_date: Optional[datetime] = Field(default=None)
     suggested_start_time: Optional[datetime] = Field(default=None)
-    start_time: Optional[datetime] = Field(default=None)
+    start_date: Optional[datetime] = Field(default=None)
     duration_seconds: Optional[int] = Field(default=None)
-    is_time_fixed: Optional[bool] = Field(default=None)
+    is_time_fixed: Optional[bool] = Field(default=False)
     reccurence: Optional[str] = Field(default=None)
-    ai_generated: Optional[bool] = Field(default=None)
+    ai_generated: Optional[bool] = Field(default=False)
     created_at: Optional[datetime] = Field(default=None)
     updated_at: Optional[datetime] = Field(default=None)
     time_block: Optional["TimeBlock"] = Relationship(back_populates="task")
     ai_suggestion: Optional["AISuggestion"] = Relationship(back_populates="task")
     task_notification: Optional["TaskNotification"] = Relationship(back_populates="task")
     task_history: List["TaskHistory"] = Relationship(back_populates="task")
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._validate()
+    
+    def _validate(self):
+        """Validate goal data."""
+        if not self.name or len(self.name.strip()) == 0:
+            raise ValueError("Goal name cannot be empty")
+            
+        valid_statuses = {"Not Started", "In Progress", "Completed", None}
+        if self.status not in valid_statuses:
+            raise ValueError(f"Invalid status. Must be one of: {valid_statuses}")
 
     @property
     def duration(self):

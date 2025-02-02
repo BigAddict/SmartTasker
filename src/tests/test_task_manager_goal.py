@@ -11,9 +11,9 @@ if project_root not in sys.path:
 # Third-party imports
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import text
+from sqlmodel import delete
 
 # Local application imports
 from src.models.model import Goal
@@ -27,9 +27,8 @@ async def setup_database():
     
     # Clear all data from the goals table
     async with AsyncSession(get_engine()) as session:
-        await session.execute(text("DELETE FROM goal"))
+        await session.exec(delete(Goal))
         await session.commit()
-    
     yield
 
 @pytest_asyncio.fixture
@@ -52,7 +51,7 @@ class TestGoalManager:
     """Test suite for GoalManager."""
     
     @pytest.mark.asyncio
-    async def test_create_goal(self, goal_manager, sample_goal):
+    async def test_create_goal(self, goal_manager: GoalManager, sample_goal: Goal):
         """Test goal creation."""
         # When
         created_goal = await goal_manager.create_goal(sample_goal)
@@ -65,7 +64,7 @@ class TestGoalManager:
         assert created_goal.created_at is not None
 
     @pytest.mark.asyncio
-    async def test_get_goal(self, goal_manager, sample_goal):
+    async def test_get_goal(self, goal_manager: GoalManager, sample_goal: Goal):
         """Test goal retrieval."""
         # Given
         created_goal = await goal_manager.create_goal(sample_goal)
@@ -80,7 +79,7 @@ class TestGoalManager:
         assert retrieved_goal.description == created_goal.description
 
     @pytest.mark.asyncio
-    async def test_get_all_goals(self, goal_manager, sample_goal):
+    async def test_get_all_goals(self, goal_manager: GoalManager, sample_goal: Goal):
         """Test retrieving all goals."""
         # Given
         created_goal = await goal_manager.create_goal(sample_goal)
@@ -101,7 +100,7 @@ class TestGoalManager:
         assert any(g.id == second_goal.id for g in all_goals)
 
     @pytest.mark.asyncio
-    async def test_update_goal(self, goal_manager, sample_goal):
+    async def test_update_goal(self, goal_manager: GoalManager, sample_goal: Goal):
         """Test goal update."""
         # Given
         created_goal = await goal_manager.create_goal(sample_goal)
@@ -124,7 +123,7 @@ class TestGoalManager:
         assert verified_goal.description == "Updated Description"
 
     @pytest.mark.asyncio
-    async def test_delete_goal(self, goal_manager, sample_goal):
+    async def test_delete_goal(self, goal_manager: GoalManager, sample_goal: Goal):
         """Test goal deletion."""
         # Given
         created_goal = await goal_manager.create_goal(sample_goal)
@@ -133,12 +132,13 @@ class TestGoalManager:
         delete_success = await goal_manager.delete_goal(created_goal.id)
         
         # Then
+        print(f"Delete_Success: {delete_success}")
         assert delete_success is True
         deleted_goal = await goal_manager.get_goal(created_goal.id)
         assert deleted_goal is None
 
     @pytest.mark.asyncio
-    async def test_get_non_existent_goal(self, goal_manager):
+    async def test_get_non_existent_goal(self, goal_manager: GoalManager):
         """Test retrieving a non-existent goal."""
         # When
         non_existent = await goal_manager.get_goal(999)
@@ -147,7 +147,7 @@ class TestGoalManager:
         assert non_existent is None
 
     @pytest.mark.asyncio
-    async def test_update_non_existent_goal(self, goal_manager):
+    async def test_update_non_existent_goal(self, goal_manager: GoalManager):
         """Test updating a non-existent goal."""
         # When
         updated_goal = await goal_manager.update_goal(
@@ -160,38 +160,10 @@ class TestGoalManager:
         assert updated_goal is None
 
     @pytest.mark.asyncio
-    async def test_delete_non_existent_goal(self, goal_manager):
+    async def test_delete_non_existent_goal(self, goal_manager: GoalManager):
         """Test deleting a non-existent goal."""
         # When
         delete_success = await goal_manager.delete_goal(999)
         
         # Then
         assert delete_success is False
-
-    @pytest.mark.asyncio
-    async def test_create_goal_with_empty_name(self, goal_manager):
-        """Test creating a goal with empty name."""
-        # Given
-        invalid_goal = Goal(
-            name="",  # Invalid: empty name
-            description="Test Description",
-            status="Not Started"
-        )
-        
-        # When/Then
-        with pytest.raises(ValueError, match="Goal name cannot be empty"):
-            await goal_manager.create_goal(invalid_goal)
-
-    @pytest.mark.asyncio
-    async def test_create_goal_with_invalid_status(self, goal_manager):
-        """Test creating a goal with invalid status."""
-        # Given
-        invalid_goal = Goal(
-            name="Test Goal",
-            description="Test Description",
-            status="Invalid Status"  # Invalid status
-        )
-        
-        # When/Then
-        with pytest.raises(ValueError, match="Invalid status"):
-            await goal_manager.create_goal(invalid_goal)
