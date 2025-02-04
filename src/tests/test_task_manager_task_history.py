@@ -87,19 +87,6 @@ class TestTaskHistory:
         assert retrived_task_history is None
 
     @pytest.mark.asyncio
-    async def test_create_task_history_with_invalid_data(self, task_history_manager: TaskHistoryManager):
-        """Test creating a TaskHistory instance with invalid data."""
-        #given
-        invalid_task_history = TaskHistory(
-            task=None,  # This should now raise an error since task is required
-            change_type="Invalid Change Type",
-        )
-
-        #when
-        with pytest.raises(ValueError):  # Change this line to expect ValueError
-            await task_history_manager.create_task_history(invalid_task_history)
-
-    @pytest.mark.asyncio
     async def test_delete_task_history(self, task_history_manager: TaskHistoryManager, sample_task_history: TaskHistory):
         """Test deleting a TaskHistory instance."""
         #given

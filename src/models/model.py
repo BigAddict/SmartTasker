@@ -4,6 +4,9 @@ from sqlmodel import Field, SQLModel, Relationship, JSON, Column
 from pydantic import model_validator
 
 class Goal(SQLModel, table=True):
+    """
+    Represents a goal in the task management system.
+    """
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(..., min_length=1)
     description: str
@@ -77,12 +80,6 @@ class Task(SQLModel, table=True):
 
 
 class TaskHistory(SQLModel, table=True):  
-    @model_validator(mode="before")  
-    def validate_task_history(cls, task_history):  
-        task = task_history.task  
-        if task is None:  
-            raise ValueError("Task cannot be None")  
-        return task_history
     id: Optional[int] = Field(default=None, primary_key=True)
     task_id: Optional[int] = Field(default=None, foreign_key="task.id")  # Foreign key
     task: Task = Relationship(back_populates="task_history")

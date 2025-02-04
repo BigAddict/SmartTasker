@@ -1,15 +1,19 @@
 # Standard library imports
 from datetime import datetime
 from typing import Optional, List, TypeVar, Generic
+import logging
 
 # Third-party imports
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
 # Local application imports
 from src.models.model import Goal, Task, TaskHistory, AISuggestion, TaskNotification, Feedback
 from src.services.db_setup import get_engine
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 T = TypeVar('T')
 
@@ -21,9 +25,6 @@ class BaseManager(Generic[T]):
         self._engine = engine
 
     async def create(self, item: T) -> T:  
-        # Validate the item before proceeding  
-        if hasattr(item, 'validate_task_history'):  
-            item = item.validate_task_history(item)  
         """Create a new item in the database."""
         try:
             async with AsyncSession(self._engine) as session:
@@ -32,6 +33,9 @@ class BaseManager(Generic[T]):
                 await session.commit()
                 await session.refresh(item)
                 return item
+        except IntegrityError as e:
+            await session.rollback()
+            raise ValueError(f"Integrity error: {e}")
         except SQLAlchemyError as e:
             await session.rollback()
             raise SQLAlchemyError(f"Failed to create item: {str(e)}")
