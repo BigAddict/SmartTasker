@@ -5,7 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine
 # Local application imports
 from src.models import model  # Import all models for SQLModel metadata
 
-DATABASE_URL = "sqlite+aiosqlite:///data.sqlite3"
+# DATABASE_URL = "sqlite+aiosqlite:///data.sqlite3"
+DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 _engine: AsyncEngine = AsyncEngine(create_engine(DATABASE_URL, echo=False, future=True))
 
